@@ -282,7 +282,7 @@ function M.filter_row(filter, typing)
     round = true,
     bg = 'CursorLine',
     children = {
-      icon('\u{eb51}', 'Comment', { size = 'sm' }), -- filter
+      icon('\u{ea6d}', 'Comment', { size = 'sm' }), -- search
       text(runs, { grow = true }),
     },
   }
