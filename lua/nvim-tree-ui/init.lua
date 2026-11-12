@@ -95,6 +95,36 @@ local function filter_typing()
   return vim.bo.filetype == 'NvimTreeFilter'
 end
 
+-- nvim-tree's own state of a node's marks: bookmarked, cut, copied (nil
+-- where it cannot be read: the rows read what nvim-tree drew instead).
+function M.marks_state(explorer, node)
+  local state = {}
+  local function ask(fn)
+    local ok, v = pcall(fn)
+    if ok and v ~= nil then
+      return v and true or false
+    end
+  end
+  if explorer.marks and explorer.marks.get then
+    state.bookmark = ask(function()
+      return explorer.marks:get(node)
+    end)
+  end
+  if explorer.clipboard then
+    state.cut = ask(function()
+      return explorer.clipboard:is_cut(node)
+    end)
+    state.copied = ask(function()
+      return explorer.clipboard:is_copied(node)
+    end)
+  end
+  local ok, glyph = pcall(function()
+    return explorer.opts.renderer.icons.glyphs.bookmark
+  end)
+  state.glyph = ok and type(glyph) == 'string' and glyph ~= '' and glyph or nil
+  return state
+end
+
 function M.item(buf, lnum, line)
   local snap = snapshot(buf)
   if not snap then
@@ -118,7 +148,13 @@ function M.item(buf, lnum, line)
   local okg, ignored = pcall(function()
     return node:is_git_ignored()
   end)
-  local info = { kind = kind, open = node.open == true, depth = depth_of(node), ignored = okg and ignored == true }
+  local info = {
+    kind = kind,
+    open = node.open == true,
+    depth = depth_of(node),
+    ignored = okg and ignored == true,
+    marks = M.marks_state(snap.explorer, node),
+  }
   local row = rows.node_row(info, rows.parts(buf, lnum, line, name, snap.signs), M.GAP)
   local hidden = rows.virtual_lines(buf, lnum)
   if #hidden > 0 then

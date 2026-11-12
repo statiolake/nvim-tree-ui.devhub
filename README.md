@@ -31,6 +31,12 @@ is nvim-tree's by construction: nothing is mapped here.
   from nvim-tree's explorer.
 - **Cursor**: DevHub follows the window's cursor; nvim-tree moving it itself
   (a render, `find_file`) redraws the focus.
+- **Marks** (`x`, `c`, `m`, `p`, clearing): a cut file shows scissors at
+  the end of its row and its name greyed, a copied one a copy icon, a
+  bookmarked one nvim-tree's bookmark glyph (beside a diagnostic, not
+  instead of it). They are read from nvim-tree's own state (its marks and
+  its clipboard), else from what it drew, and change at the render each
+  of those keys makes.
 - **Visual mode** (`V` then `d`, `x`, `c`, `m`, `gy`): the lines selected
   are one band, as a selection is in any list.
 - **Mouse**: a click moves the cursor, a double click does what the tree's

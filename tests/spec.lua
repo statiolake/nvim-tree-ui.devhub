@@ -118,6 +118,65 @@ if buf then
   end
 end
 
+-- Marks: a bookmarked and a cut file and a copied folder show at once, from nvim-tree's
+-- state, as marks at the row's end (the cut name greyed).
+if buf then
+  local function line_of(name)
+    for lnum, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+      if line:find(name, 1, true) then
+        return lnum
+      end
+    end
+  end
+  local function tips(lnum)
+    local line = vim.api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1]
+    local item = v.opts.items(lnum, line)
+    local out = {}
+    local function walk(node)
+      if type(node) ~= 'table' then
+        return
+      end
+      if node.tip then
+        table.insert(out, node.tip)
+      end
+      for _, c in ipairs(node.children or {}) do
+        walk(c)
+      end
+    end
+    walk(item and item.node)
+    return out, item
+  end
+  local before = v.redraws
+  vim.api.nvim_win_set_cursor(0, { line_of 'README.md', 0 })
+  api.marks.toggle()
+  vim.api.nvim_win_set_cursor(0, { line_of 'a.lua', 0 })
+  api.fs.cut()
+  vim.api.nvim_win_set_cursor(0, { line_of 'deep', 0 })
+  api.fs.copy.node()
+  vim.wait(100)
+  check(v.redraws >= before + 3, 'each mark redraws the tree: ' .. (v.redraws - before))
+  check(vim.deep_equal(tips(line_of 'README.md'), { 'bookmark' }), 'README.md bookmarked: ' .. vim.inspect(tips(line_of 'README.md')))
+  check(vim.deep_equal(tips(line_of 'a.lua'), { 'cut' }), 'a.lua cut: ' .. vim.inspect(tips(line_of 'a.lua')))
+  check(vim.deep_equal(tips(line_of 'deep'), { 'copied' }), 'deep copied: ' .. vim.inspect(tips(line_of 'deep')))
+  local _, cut_item = tips(line_of 'a.lua')
+  local name_node
+  for _, c in ipairs(cut_item.node.children) do
+    if c.type == 'text' and c.grow then
+      name_node = c
+    end
+  end
+  check(name_node and name_node.hl == 'Comment', 'a cut name is greyed')
+  -- cleared: the marks go at the next render
+  api.fs.clear_clipboard()
+  api.marks.clear()
+  vim.wait(100)
+  check(#tips(line_of 'a.lua') == 0 and #tips(line_of 'README.md') == 0, 'cleared marks go')
+  -- without nvim-tree's state: the drawn sign, icon and name group
+  local rows = require 'nvim-tree-ui.rows'
+  local m = rows.marks_of({ name_hl = 'NvimTreeCutHL', after = { { text = 'B', group = 'NvimTreeBookmarkIcon' } }, right = {} })
+  check(m.cut and m.bookmark and m.bookmark.text == 'B', 'marks read from what nvim-tree drew')
+end
+
 if #failures > 0 then
   io.stderr:write('FAIL\n  ' .. table.concat(failures, '\n  ') .. '\n')
   os.exit(1)

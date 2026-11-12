@@ -18,6 +18,15 @@ local SIGN_GROUP = 'NvimTreeRendererSigns'
 -- Codicons, in the Symbols Nerd Font DevHub ships.
 local CHEVRON_RIGHT = '\u{eab6}'
 local CHEVRON_DOWN = '\u{eab4}'
+-- The clipboard's marks at the end of a row (Material, in the same font).
+local CUT = '\u{f0190}' -- content-cut
+local COPIED = '\u{f018f}' -- content-copy
+
+-- What nvim-tree draws for its own marks, read when its state is not at
+-- hand: the bookmark's sign or icon, the clipboard's name groups.
+local BOOKMARK_GROUP = 'NvimTreeBookmarkIcon'
+local CUT_GROUP = 'NvimTreeCutHL'
+local COPIED_GROUP = 'NvimTreeCopiedHL'
 
 -- nvim-tree's git groups, as a letter in its tone (VS Code's reading).
 local GIT = {
@@ -137,7 +146,7 @@ function M.signs(buf)
   for _, s in ipairs(ok and placed[1] and placed[1].signs or {}) do
     local def = vim.fn.sign_getdefined(s.name)[1]
     if def and def.text and vim.trim(def.text) ~= '' then
-      out[s.lnum] = { text = vim.trim(def.text), hl = def.texthl }
+      out[s.lnum] = { name = s.name, text = vim.trim(def.text), hl = def.texthl }
     end
   end
   return out
@@ -203,8 +212,55 @@ local function marks(parts)
   for _, w in ipairs(parts.right) do
     add(text({ { text = w.text, hl = w.group } }, { mono = true, size = 'sm' }))
   end
-  if parts.sign then
+  -- The marks nvim-tree keeps on a node: cut, copied, bookmarked.
+  local marks_ = parts.marks or {}
+  if marks_.cut then
+    add(icon(CUT, 'Function', { size = 'sm', tip = 'cut' }))
+  elseif marks_.copied then
+    add(icon(COPIED, 'Function', { size = 'sm', tip = 'copied' }))
+  end
+  if marks_.bookmark then
+    add(icon(marks_.bookmark.text, marks_.bookmark.hl, { size = 'sm', tip = 'bookmark' }))
+  end
+  -- The sign: a diagnostic (the bookmark's sign is drawn above already).
+  if parts.sign and parts.sign.name ~= BOOKMARK_GROUP then
     add(icon(parts.sign.text, parts.sign.hl, { size = 'sm' }))
+  end
+  return out
+end
+
+--- The marks on a node: { bookmark = { text, hl }?, cut, copied } from
+--- nvim-tree's state when the caller has it (state = { bookmark, cut,
+--- copied, glyph }), else from what nvim-tree drew: the bookmark's sign or
+--- icon, and the clipboard's group over the name.
+function M.marks_of(parts, state)
+  state = state or {}
+  local glyph = state.glyph or '\u{f01a4}'
+  local out = { cut = state.cut, copied = state.copied }
+  if state.bookmark then
+    out.bookmark = { text = glyph, hl = BOOKMARK_GROUP }
+  end
+  if parts.sign and parts.sign.name == BOOKMARK_GROUP then
+    out.bookmark = out.bookmark or { text = parts.sign.text, hl = parts.sign.hl or BOOKMARK_GROUP }
+  end
+  for i = #parts.after, 1, -1 do
+    local w = parts.after[i]
+    if w.group == BOOKMARK_GROUP then
+      out.bookmark = out.bookmark or { text = w.text, hl = BOOKMARK_GROUP }
+      table.remove(parts.after, i) -- drawn as the bookmark, not as a plain mark
+    end
+  end
+  if state.cut == nil and parts.name_hl == CUT_GROUP then
+    out.cut = true
+  end
+  if state.copied == nil and parts.name_hl == COPIED_GROUP then
+    out.copied = true
+  end
+  for i = #parts.right, 1, -1 do
+    if parts.right[i].group == BOOKMARK_GROUP then
+      out.bookmark = out.bookmark or { text = parts.right[i].text, hl = BOOKMARK_GROUP }
+      table.remove(parts.right, i)
+    end
   end
   return out
 end
@@ -217,9 +273,12 @@ function M.node_row(node, parts, gap)
   if parts.icon then
     table.insert(children, icon(vim.fn.strcharpart(parts.icon.text, 0, 1), parts.icon.group))
   end
-  -- git-ignored (nvim-tree's state, or its ignored mark after the name):
-  -- the name in the muted colour, as VS Code greys it.
-  local ignored = node.ignored == true
+  parts.marks = M.marks_of(parts, node.marks)
+  -- git-ignored (nvim-tree's state, or its ignored mark after the name)
+  -- or cut: the name in the muted colour, as VS Code greys them. nvim-tree
+  -- draws cut and copied as an undercurl, which a name in its colour alone
+  -- would lose: they are marks at the end of the row instead.
+  local ignored = node.ignored == true or parts.marks.cut == true
   for _, w in ipairs(parts.after) do
     if w.group == 'NvimTreeGitIgnoredIcon' then
       ignored = true
