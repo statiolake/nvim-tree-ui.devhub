@@ -1,13 +1,13 @@
 # nvim-tree-ui.devhub
 
-> **WIP — a prototype.** It draws the tree and keeps every nvim-tree key;
-> the styles and the remaining items below are still being settled.
-
 [nvim-tree.lua](https://github.com/nvim-tree/nvim-tree.lua) drawn as
 [DevHub](https://github.com/statiolake/devhub)'s native file tree: rows in
-DevHub's type, a chevron per folder, indent guides down the rows, git and
-diagnostics as small marks at the end of the row, the root as a section
-header that stays at the top.
+DevHub's type, 22 px tall; a chevron per folder and indent guides down the
+rows (the one of the cursor's level stronger); your devicons; git as VS
+Code reads it — a file's `M` / `A` / `U` / `D` / `R` at the end of its
+row, a folder's one dot in its children's strongest status, ignored names
+greyed —; diagnostics as your sign icon at the end of the row; the root as
+a section header (`SAMPLE ~/work`) that stays at the top.
 
 A DevHub extension (named `.devhub`, as Neovim plugins are `.nvim`): DevHub's
 GUI is its engine, so it needs DevHub and devhub.nvim and is meant to be
@@ -32,7 +32,7 @@ is nvim-tree's by construction: nothing is mapped here.
 - **Cursor**: DevHub follows the window's cursor; nvim-tree moving it itself
   (a render, `find_file`) redraws the focus.
 - **Visual mode** (`V` then `d`, `x`, `c`, `m`, `gy`): the lines selected
-  are drawn selected.
+  are one band, as a selection is in any list.
 - **Mouse**: a click moves the cursor, a double click does what the tree's
   `<2-LeftMouse>` does; the wheel scrolls and takes the cursor along.
 - **Live filter** (`f`): nvim-tree's one-line float is hidden and what is
@@ -43,10 +43,19 @@ is nvim-tree's by construction: nothing is mapped here.
 When nvim-tree's internals are not what this expects (another version),
 nvim-tree draws itself.
 
-## Install
+## Requirements
 
-Needs nvim-tree.lua and [devhub.nvim](https://github.com/statiolake/devhub.nvim),
-and a DevHub whose `gui.view` takes `indent` / `row_height` (a tree).
+- [DevHub](https://github.com/statiolake/devhub) with tree views:
+  `gui.view{ indent, row_height }` and items `{ node, depth, sticky }`
+  (`5033a5cb`, "gui.view as a tree") — and, for the selection drawn as one
+  band, `b79811d0` or later. An older DevHub draws the rows without indent
+  or guides.
+- [devhub.nvim](https://github.com/statiolake/devhub.nvim) (`4df8ed1` or
+  later documents and checks tree items).
+- nvim-tree.lua (tested at `7e1da84`) and, for the icons,
+  nvim-web-devicons — as you configure them for nvim-tree.
+
+## Install
 
 ```lua
 {
@@ -55,31 +64,31 @@ and a DevHub whose `gui.view` takes `indent` / `row_height` (a tree).
   dependencies = { 'nvim-tree/nvim-tree.lua', 'statiolake/devhub.nvim' },
   event = 'VeryLazy',
   main = 'nvim-tree-ui',
-  opts = { style = 'native' },
+  opts = {},
 }
 ```
+
+Keep your nvim-tree spec as it is: `on_attach`, `renderer`, `git`,
+`diagnostics` and the rest are read from what nvim-tree draws.
 
 ## Options
 
 ```lua
 require('nvim-tree-ui').setup {
   enabled = true,       -- false: nvim-tree draws itself
-  style = 'native',     -- 'native' | 'compact' | 'minimal', or a table:
-  --   { indent = 16, row_height = 22, gap = 6,
-  --     icons = 'devicons' | 'codicon', git = 'letter' | 'dot' | 'glyph',
-  --     diagnostics = 'icon' | 'pill', header = 'section' | 'path' }
-  keys = nil,           -- a hint row: { { 'a', 'new' }, { 'r', 'rename' } }
+  keys = nil,           -- a hint row under the tree: { { 'a', 'new' }, { 'r', 'rename' } }
 }
 ```
 
 `vim.g.nvim_tree_ui_devhub = true | false` turns it on or off while Neovim runs
 (for trees opened afterwards).
 
-## Still to do
+## Not (yet) here
 
-- Rename in place (an inline field on the row) instead of the quick pick.
+- Rename in place on the row: `r` / `a` ask in DevHub's quick pick.
 - Drag and drop between folders.
-- A style chosen and the other two dropped.
+- Scrolling is DevHub's, in pixels, keeping the cursor's row in sight:
+  `zz` / `zt` move nothing you can see.
 
 ## Tests
 
