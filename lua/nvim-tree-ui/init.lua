@@ -16,19 +16,14 @@ local rows = require 'nvim-tree-ui.rows'
 
 local M = {}
 
-M.styles = {
-  -- 22 px rows, devicons, VS Code's git letters, the root as a section.
-  native = { indent = 16, row_height = 22, gap = 6, icons = 'devicons', git = 'letter', diagnostics = 'icon', header = 'section' },
-  -- rows as tall as the grid's, your nvim-tree glyphs as they are.
-  compact = { indent = 14, row_height = 18, gap = 5, icons = 'devicons', git = 'glyph', diagnostics = 'icon', header = 'path' },
-  -- monochrome codicons, git as a dot, diagnostics as a pill.
-  minimal = { indent = 12, row_height = 22, gap = 6, icons = 'codicon', git = 'dot', diagnostics = 'pill', header = 'section' },
-}
+-- The look: 22 px rows, a level 16 px (the chevron's column, the guides
+-- down its middle), 6 px between the parts of a row.
+M.INDENT = 16
+M.ROW_HEIGHT = 22
+M.GAP = 6
 
 local defaults = {
   enabled = true,
-  -- 'native' | 'compact' | 'minimal', or a table of the same fields.
-  style = 'native',
   -- The hint row under the tree: { { lhs, label } }; none by default.
   keys = nil,
 }
@@ -44,14 +39,6 @@ function M.active()
     return g ~= false
   end
   return M.config.enabled ~= false
-end
-
-local function style()
-  local s = M.config.style
-  if type(s) == 'table' then
-    return vim.tbl_extend('force', M.styles.native, s)
-  end
-  return M.styles[s] or M.styles.native
 end
 
 -- nvim-tree's internals this needs, or nil (then nvim-tree draws itself).
@@ -110,12 +97,11 @@ end
 
 function M.item(buf, lnum, line)
   local snap = snapshot(buf)
-  local st = style()
   if not snap then
     return nil
   end
   if lnum == snap.root_line then
-    return { node = rows.root_row(line, snap.explorer.absolute_path, st), sticky = true, depth = 0 }
+    return { node = rows.root_row(snap.explorer.absolute_path), sticky = true, depth = 0 }
   end
   if lnum == snap.filter_line then
     return { node = rows.filter_row(snap.explorer.live_filter.filter or '', filter_typing()), sticky = true, depth = 0 }
@@ -129,8 +115,11 @@ function M.item(buf, lnum, line)
   end)
   local name = ok and hn and hn.str or node.name
   local kind = node.nodes and 'directory' or node.type == 'link' and 'link' or 'file'
-  local info = { kind = kind, open = node.open == true, depth = depth_of(node) }
-  local row = rows.node_row(info, rows.parts(buf, lnum, line, name, snap.signs), st)
+  local okg, ignored = pcall(function()
+    return node:is_git_ignored()
+  end)
+  local info = { kind = kind, open = node.open == true, depth = depth_of(node), ignored = okg and ignored == true }
+  local row = rows.node_row(info, rows.parts(buf, lnum, line, name, snap.signs), M.GAP)
   local hidden = rows.virtual_lines(buf, lnum)
   if #hidden > 0 then
     local col = { type = 'stack', children = { row } }
@@ -174,12 +163,11 @@ function M.attach(buf)
   if not gui.available() then
     return
   end
-  local st = style()
   attached[buf] = {}
   local view = gui.view {
     buf = buf,
-    indent = st.indent,
-    row_height = st.row_height,
+    indent = M.INDENT,
+    row_height = M.ROW_HEIGHT,
     keys = M.config.keys,
     items = function(lnum, line)
       local ok, item = pcall(M.item, buf, lnum, line)
@@ -283,9 +271,6 @@ end
 
 function M.setup(opts)
   M.config = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
-  if M.config.style == nil then
-    M.config.style = 'native'
-  end
   M.install()
 end
 

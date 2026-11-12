@@ -47,7 +47,7 @@ require('nvim-tree').setup {
   git = { enable = false },
   renderer = { indent_markers = { enable = true }, icons = { show = { file = false, folder = true, git = false } } },
 }
-require('nvim-tree-ui').setup { style = 'native' }
+require('nvim-tree-ui').setup {}
 local api = require 'nvim-tree.api'
 api.tree.open()
 vim.wait(1000, function()
@@ -55,7 +55,7 @@ vim.wait(1000, function()
 end)
 check(#views == 1, 'a view on the tree buffer: ' .. #views)
 local v = views[1]
-check(v and v.opts.indent == 16 and v.opts.row_height == 22, 'the style\'s indent and row height')
+check(v and v.opts.indent == 16 and v.opts.row_height == 22, 'a tree: 16 px a level, 22 px rows')
 
 local buf = v and v.opts.buf
 local function items()

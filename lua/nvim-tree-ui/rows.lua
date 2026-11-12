@@ -18,13 +18,6 @@ local SIGN_GROUP = 'NvimTreeRendererSigns'
 -- Codicons, in the Symbols Nerd Font DevHub ships.
 local CHEVRON_RIGHT = '\u{eab6}'
 local CHEVRON_DOWN = '\u{eab4}'
-local CODICON = {
-  folder = '\u{ea83}',
-  folder_open = '\u{eaf7}',
-  file = '\u{ea7b}',
-  link = '\u{eb15}',
-  root = '\u{eb46}', -- repo
-}
 
 -- nvim-tree's git groups, as a letter in its tone (VS Code's reading).
 local GIT = {
@@ -160,30 +153,32 @@ local function icon(glyph, hl, extra)
   return vim.tbl_extend('force', { type = 'icon', glyph = glyph, hl = hl }, extra or {})
 end
 
--- The chevron column: as wide as a level (the guides run down its middle).
-local function twistie(node, indent)
+-- The chevron's column: 16 px, a level's width, so the guides of the rows
+-- under it run down its middle.
+local function twistie(node)
   local glyph
   if node.kind == 'directory' then
     glyph = node.open and CHEVRON_DOWN or CHEVRON_RIGHT
   end
-  local side = math.max(0, (indent - 12) / 2)
   return {
     type = 'hstack',
     children = {
-      { type = 'spacer', size = side },
+      { type = 'spacer', size = 2 },
       glyph and icon(glyph, 'NvimTreeFolderArrowClosed', { size = 'sm' }) or { type = 'spacer', size = 12 },
-      { type = 'spacer', size = side },
+      { type = 'spacer', size = 2 },
     },
   }
 end
 
--- The decorations at the end of a row, by style.
-local function marks(parts, style)
+-- The marks at the end of a row: git as VS Code reads it (a file's letter,
+-- a folder's one dot in its children's strongest status; anything else
+-- nvim-tree put after the name as it is), then the right-aligned ones and
+-- the diagnostic sign.
+local function marks(parts)
   local out = {}
   local function add(node)
     table.insert(out, node)
   end
-  -- A folder's statuses are its children's: one dot, the strongest.
   local folder_git
   for _, w in ipairs(parts.after) do
     local git = w.group and GIT[w.group]
@@ -194,13 +189,12 @@ local function marks(parts, style)
   local dotted = false
   for _, w in ipairs(parts.after) do
     local git = w.group and GIT[w.group]
-    if git and style.git ~= 'glyph' and (parts.kind == 'directory' or style.git == 'dot') then
+    if git and parts.kind == 'directory' then
       if not dotted then
         dotted = true
-        local g = parts.kind == 'directory' and folder_git or git
-        add(icon('●', g.hl, { size = 'xs' }))
+        add(icon('●', folder_git.hl, { size = 'xs' }))
       end
-    elseif style.git == 'letter' and git then
+    elseif git then
       add(text({ { text = git.letter, hl = git.hl, bold = true } }, { mono = true, size = 'sm' }))
     else
       add(text({ { text = w.text, hl = w.group } }, { mono = true, size = 'sm' }))
@@ -210,60 +204,47 @@ local function marks(parts, style)
     add(text({ { text = w.text, hl = w.group } }, { mono = true, size = 'sm' }))
   end
   if parts.sign then
-    if style.diagnostics == 'pill' then
-      add { type = 'badge', text = parts.sign.text, hl = parts.sign.hl, size = 'xs', pill = true }
-    else
-      add(icon(parts.sign.text, parts.sign.hl, { size = 'sm' }))
-    end
+    add(icon(parts.sign.text, parts.sign.hl, { size = 'sm' }))
   end
   return out
 end
 
---- A node's row.
---- node = { kind = 'directory' | 'file' | 'link', open, depth }
-function M.node_row(node, parts, style)
+--- A node's row: chevron, icon, name, marks.
+--- node = { kind = 'directory' | 'file' | 'link', open, depth, ignored }
+function M.node_row(node, parts, gap)
   parts.kind = node.kind
-  local children = { twistie(node, style.indent) }
-  if style.icons == 'codicon' then
-    local glyph = node.kind == 'directory' and (node.open and CODICON.folder_open or CODICON.folder)
-      or node.kind == 'link' and CODICON.link
-      or CODICON.file
-    table.insert(children, icon(glyph, 'Comment'))
-  elseif parts.icon then
+  local children = { twistie(node) }
+  if parts.icon then
     table.insert(children, icon(vim.fn.strcharpart(parts.icon.text, 0, 1), parts.icon.group))
   end
-  local name_hl = parts.name_hl
-  table.insert(children, text({ { text = parts.name, hl = name_hl } }, { grow = true, ink = true }))
-  vim.list_extend(children, marks(parts, style))
-  return { type = 'hstack', gap = style.gap, align = 'center', children = children }
+  -- git-ignored (nvim-tree's state, or its ignored mark after the name):
+  -- the name in the muted colour, as VS Code greys it.
+  local ignored = node.ignored == true
+  for _, w in ipairs(parts.after) do
+    if w.group == 'NvimTreeGitIgnoredIcon' then
+      ignored = true
+    end
+  end
+  table.insert(children, text({ { text = parts.name } }, { hl = ignored and 'Comment' or parts.name_hl, ink = true, grow = true }))
+  vim.list_extend(children, marks(parts))
+  return { type = 'hstack', gap = gap or 6, align = 'center', children = children }
 end
 
---- The root's row: the folder's name and where it is.
-function M.root_row(label, path, style)
+--- The root's row: a section header, the folder's name and where it is.
+function M.root_row(path)
   local name = vim.fn.fnamemodify(path, ':t')
   if name == '' then
     name = path
-  end
-  if style.header == 'section' then
-    return {
-      type = 'hstack',
-      gap = 6,
-      align = 'center',
-      pad = { 4, 0 },
-      children = {
-        icon(CHEVRON_DOWN, 'Comment', { size = 'sm' }),
-        text({ { text = name, bold = true } }, { upper = true, size = 'sm' }),
-        text({ { text = vim.fn.fnamemodify(path, ':~:h'), hl = 'Comment' } }, { size = 'xs', grow = true }),
-      },
-    }
   end
   return {
     type = 'hstack',
     gap = 6,
     align = 'center',
+    pad = { 4, 0 },
     children = {
-      icon(CODICON.root, 'NvimTreeRootFolder'),
-      text({ { text = label, hl = 'NvimTreeRootFolder', bold = true } }, { mono = style.header == 'path', grow = true }),
+      icon(CHEVRON_DOWN, 'Comment', { size = 'sm' }),
+      text({ { text = name, bold = true } }, { upper = true, size = 'sm' }),
+      text({ { text = vim.fn.fnamemodify(path, ':~:h'), hl = 'Comment' } }, { size = 'xs', grow = true }),
     },
   }
 end
