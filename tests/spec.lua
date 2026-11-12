@@ -171,6 +171,24 @@ if buf then
   api.marks.clear()
   vim.wait(100)
   check(#tips(line_of 'a.lua') == 0 and #tips(line_of 'README.md') == 0, 'cleared marks go')
+  -- paste does nvim-tree's: with cut and copied nodes both waiting, one
+  -- paste moves the cut ones and keeps the copied ones (their mark stays),
+  -- the next pastes those and their mark goes
+  vim.api.nvim_win_set_cursor(0, { line_of 'README.md', 0 })
+  api.fs.cut()
+  vim.api.nvim_win_set_cursor(0, { line_of 'deep', 0 })
+  api.fs.copy.node()
+  vim.api.nvim_win_set_cursor(0, { line_of 'src', 0 })
+  api.fs.paste()
+  vim.wait(300)
+  check(vim.uv.fs_stat(dir .. '/src/README.md') ~= nil, 'the cut file moved')
+  check(vim.uv.fs_stat(dir .. '/src/deep/deep') == nil, 'the copied folder not yet pasted')
+  check(vim.deep_equal(tips(line_of 'deep'), { 'copied' }), 'still copied after the first paste: ' .. vim.inspect(tips(line_of 'deep')))
+  vim.api.nvim_win_set_cursor(0, { line_of 'deep', 0 })
+  api.fs.paste() -- into deep itself: deep/deep
+  vim.wait(300)
+  check(vim.uv.fs_stat(dir .. '/src/deep/deep') ~= nil, 'the copied folder pasted')
+  check(#tips(line_of 'deep') == 0, 'its mark gone after the second paste: ' .. vim.inspect(tips(line_of 'deep')))
   -- without nvim-tree's state: the drawn sign, icon and name group
   local rows = require 'nvim-tree-ui.rows'
   local m = rows.marks_of({ name_hl = 'NvimTreeCutHL', after = { { text = 'B', group = 'NvimTreeBookmarkIcon' } }, right = {} })
