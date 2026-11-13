@@ -39,8 +39,34 @@ is nvim-tree's by construction: nothing is mapped here.
   of those keys makes.
 - **Visual mode** (`V` then `d`, `x`, `c`, `m`, `gy`): the lines selected
   are one band, as a selection is in any list.
-- **Mouse**: a click moves the cursor, a double click does what the tree's
-  `<2-LeftMouse>` does; the wheel scrolls and takes the cursor along.
+- **Mouse**: a click on a folder opens or closes it, on a file opens it —
+  what your `<CR>` does (nvim-tree's `api.node.open.edit` if you map none),
+  as VS Code's explorer does; a double click's second press does nothing
+  more. On the root's row a click only moves the cursor. With
+  `single_click = false` a click moves the cursor and a double click does
+  what the tree's `<2-LeftMouse>` does, as in nvim-tree. The pointer never
+  reaches Neovim over the tree, so your own `<LeftRelease>` /
+  `<2-LeftMouse>` maps never run as well. The wheel scrolls and takes the
+  cursor along.
+- **Menu**: a right-click on a row (it is focused at once), or `<S-F10>` /
+  the menu key on the cursor's row, puts up DevHub's native menu with what
+  nvim-tree's API does to that node — only what is valid for it:
+  - a file: Open, Open in Vertical Split, Open in Horizontal Split, Open in
+    New Tab; a folder: Expand / Collapse;
+  - New File…, New Folder…, Rename…, Delete, and Trash when your
+    `trash.cmd` runs here;
+  - Cut, Copy, and Paste while nvim-tree's clipboard holds something;
+  - Copy Name, Copy Relative Path, Copy Absolute Path; on macOS, Reveal in
+    Finder (`open -R`);
+  - Toggle Bookmark, Collapse All, Refresh;
+  - the root's row: New File…, New Folder…, Paste, Copy Absolute Path,
+    Reveal in Finder, Collapse All, Refresh.
+
+  Beside each item is the key your nvim-tree mappings give it
+  (`api.map.keymap.current()`, found by the function you mapped or by
+  nvim-tree's name for it), so the menu teaches the keys: `↩`, `⌃V`, `r`,
+  `⇧Y`, and a sequence as `[gy]`. New Folder… asks for a name and makes the
+  folder (nvim-tree's create makes one of a name ending in `/`, `a`).
 - **Live filter** (`f`): nvim-tree's one-line float is hidden and what is
   typed shows in the filter row; the keys are still the float's buffer's.
 - **Prompts** (`a`, `r`, `d`): `vim.ui.input` / `vim.ui.select`, i.e.
@@ -57,7 +83,9 @@ nvim-tree draws itself.
   band, `b79811d0` or later. An older DevHub draws the rows without indent
   or guides.
 - [devhub.nvim](https://github.com/statiolake/devhub.nvim) (`4df8ed1` or
-  later documents and checks tree items).
+  later documents and checks tree items). The menu needs a DevHub and a
+  devhub.nvim with `on_context_menu` (`gui.menu`); an older one has no
+  menu, and the rest works as before.
 - nvim-tree.lua (tested at `7e1da84`) and, for the icons,
   nvim-web-devicons — as you configure them for nvim-tree.
 
@@ -82,6 +110,8 @@ Keep your nvim-tree spec as it is: `on_attach`, `renderer`, `git`,
 ```lua
 require('nvim-tree-ui').setup {
   enabled = true,       -- false: nvim-tree draws itself
+  single_click = true,  -- false: a click moves the cursor, a double click opens
+  context_menu = true,  -- false: no right-click / <S-F10> menu
   keys = nil,           -- a hint row under the tree: { { 'a', 'new' }, { 'r', 'rename' } }
 }
 ```

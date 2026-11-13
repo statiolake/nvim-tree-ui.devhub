@@ -195,6 +195,104 @@ if buf then
   check(m.cut and m.bookmark and m.bookmark.text == 'B', 'marks read from what nvim-tree drew')
 end
 
+-- Clicks: one opens a folder (a double click's second press does not close
+-- it again) and opens a file; the root's row only moves the cursor.
+if buf then
+  local function line_of(name)
+    for lnum, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+      if line:find(name, 1, true) then
+        return lnum
+      end
+    end
+  end
+  local tree_win = vim.fn.bufwinid(buf)
+  vim.api.nvim_set_current_win(tree_win)
+  api.tree.collapse_all()
+  vim.wait(100)
+  local function click(lnum, clicks)
+    vim.api.nvim_win_set_cursor(tree_win, { lnum, 0 })
+    v.opts.on_click(lnum, clicks)
+    vim.wait(100)
+  end
+  click(line_of 'src', 1)
+  check(line_of 'a.lua' ~= nil, 'one click opens a folder')
+  click(line_of 'src', 2)
+  check(line_of 'a.lua' ~= nil, 'the second press of a double click does not close it again')
+  click(line_of 'src', 1)
+  check(line_of 'a.lua' == nil, 'a click on an open folder closes it')
+  click(line_of 'src', 1)
+  local before_root = #vim.api.nvim_list_wins()
+  click(1, 1)
+  check(vim.api.nvim_get_current_win() == tree_win and #vim.api.nvim_list_wins() == before_root, 'a click on the root only moves the cursor')
+  click(line_of 'a.lua', 1)
+  local opened = false
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w)):match 'src/a%.lua$' then
+      opened = true
+    end
+  end
+  check(opened, 'one click opens a file')
+  -- single_click = false: a click moves the cursor, a double click opens
+  vim.api.nvim_set_current_win(tree_win)
+  require('nvim-tree-ui').config.single_click = false
+  click(line_of 'src', 1)
+  check(line_of 'a.lua' ~= nil, 'single_click = false: a click leaves the folder as it was')
+  click(line_of 'src', 2)
+  check(line_of 'a.lua' == nil, 'single_click = false: a double click is <2-LeftMouse>')
+  require('nvim-tree-ui').config.single_click = true
+  click(line_of 'src', 1)
+
+  -- The menu: what is valid for the node, each with your key for it.
+  check(type(v.opts.on_context_menu) == 'function', 'the view has a menu')
+  local function menu(lnum)
+    local items = v.opts.on_context_menu(lnum) or {}
+    local labels, keys, by = {}, {}, {}
+    for _, it in ipairs(items) do
+      if it.label then
+        table.insert(labels, it.label)
+        keys[it.label] = it.accelerator
+        by[it.label] = it
+      end
+    end
+    return labels, keys, by
+  end
+  local labels, keys = menu(line_of 'a.lua')
+  -- Trash is there when trash.cmd runs here (gio, trash)
+  local trash = vim.tbl_contains(labels, 'Trash')
+  check(trash == (vim.fn.executable(vim.split(require('nvim-tree.core').get_explorer().opts.trash.cmd, ' ')[1]) == 1), 'Trash only when configured')
+  check(vim.deep_equal(vim.tbl_filter(function(l) return l ~= 'Trash' end, labels), {
+    'Open', 'Open in Vertical Split', 'Open in Horizontal Split', 'Open in New Tab',
+    'New File…', 'New Folder…', 'Rename…', 'Delete', 'Cut', 'Copy',
+    'Copy Name', 'Copy Relative Path', 'Copy Absolute Path',
+    'Toggle Bookmark', 'Collapse All', 'Refresh',
+  }), 'a file\'s menu: ' .. vim.inspect(labels))
+  check(keys['Open'] == '<CR>' and keys['Rename…'] == 'r' and keys['Open in Vertical Split'] == '<C-V>', 'keys: ' .. vim.inspect(keys))
+  check(keys['Copy Relative Path'] == 'Y' and keys['Copy Absolute Path'] == 'gy' and keys['Toggle Bookmark'] == 'm', 'copy keys: ' .. vim.inspect(keys))
+  check(keys['Delete'] == '<Del>' and keys['Collapse All'] == 'W' and keys['Refresh'] == 'R', 'more keys: ' .. vim.inspect(keys))
+  local folder = menu(line_of 'src')
+  check(folder[1] == 'Collapse' and not vim.tbl_contains(folder, 'Open in New Tab'), 'a folder\'s menu: ' .. vim.inspect(folder))
+  local root = menu(1)
+  check(vim.deep_equal(root, { 'New File…', 'New Folder…', 'Copy Absolute Path', 'Collapse All', 'Refresh' }), 'the root\'s menu: ' .. vim.inspect(root))
+  check(not vim.tbl_contains(labels, 'Paste'), 'no Paste with nothing to paste')
+  -- chosen: runs nvim-tree's action on the row's node, wherever the cursor is
+  local _, _, by = menu(line_of 'a.lua')
+  vim.api.nvim_win_set_cursor(tree_win, { 1, 0 })
+  by['Toggle Bookmark'].on_select()
+  check(api.marks.list()[1] and api.marks.list()[1].name == 'a.lua', 'Toggle Bookmark marks the menu\'s node')
+  api.marks.clear()
+  _, _, by = menu(line_of 'a.lua')
+  by['Copy'].on_select()
+  local with_paste = menu(line_of 'src')
+  check(vim.tbl_contains(with_paste, 'Paste'), 'Paste once something is copied')
+  api.fs.clear_clipboard()
+  -- a key your on_attach maps your own way is found by nvim-tree's name for it
+  local m = require 'nvim-tree-ui.menu'
+  local own = function() end
+  local index = { {}, { Rename = { 'R', '<F2>' } } }
+  check(m.keys_for(index, own, 'Rename') == '<F2>', 'a key found by its desc, the named one first')
+  check(m.best_key { 'gy', 'Y' } == 'Y', 'a single key over a sequence')
+end
+
 if #failures > 0 then
   io.stderr:write('FAIL\n  ' .. table.concat(failures, '\n  ') .. '\n')
   os.exit(1)

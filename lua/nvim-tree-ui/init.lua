@@ -24,6 +24,11 @@ M.GAP = 6
 
 local defaults = {
   enabled = true,
+  -- A click on a folder opens or closes it, on a file opens it (what your
+  -- <CR> does); false: a click only moves the cursor, a double click opens.
+  single_click = true,
+  -- The row's menu on a right-click and <S-F10> (or the menu key).
+  context_menu = true,
   -- The hint row under the tree: { { lhs, label } }; none by default.
   keys = nil,
 }
@@ -171,24 +176,69 @@ function M.item(buf, lnum, line)
   return { node = row, depth = info.depth }
 end
 
--- A double click does what the tree's <2-LeftMouse> does (nvim-tree's, or
--- the one your on_attach set); a single click only moves the cursor, as in
--- nvim-tree.
-local function on_click(buf, lnum, clicks)
-  if clicks ~= 2 then
-    return
-  end
+-- The buffer's map for lhs in Normal mode, run as a key would run it.
+local function run_map(buf, lhs)
   for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, 'n')) do
-    if map.lhs == '<2-LeftMouse>' then
+    if map.lhs == lhs then
       if map.callback then
         map.callback()
       elseif map.rhs then
         vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(map.rhs, true, true, true), 'm', false)
       end
-      return
+      return true
     end
   end
-  local _ = lnum
+  return false
+end
+
+-- A click (DevHub moved the cursor to the row first). The mouse never
+-- reaches Neovim over the view, so nvim-tree's own <LeftRelease> and
+-- <2-LeftMouse> maps never run as well: this is the click's only act.
+-- single_click: the first press opens or toggles, as your <CR> does
+-- (nvim-tree's api.node.open.edit without one); a double click's second
+-- press does nothing more, or a folder would close again. On the root's
+-- and the filter's rows a click only moves the cursor. Otherwise, as in
+-- nvim-tree: a double click does what <2-LeftMouse> does.
+function M.on_click(buf, lnum, clicks)
+  if M.config.single_click == false then
+    if clicks == 2 then
+      run_map(buf, '<2-LeftMouse>')
+    end
+    return
+  end
+  if clicks ~= 1 then
+    return
+  end
+  local snap = snapshot(buf)
+  if not snap or not snap.by_line[lnum] or lnum == snap.root_line or lnum == snap.filter_line then
+    return
+  end
+  if not run_map(buf, '<CR>') then
+    local ok, api = pcall(require, 'nvim-tree.api')
+    if ok then
+      api.node.open.edit()
+    end
+  end
+end
+
+-- The row's menu (menu.lua): its node's items, built when it opens.
+function M.context_menu(buf, lnum)
+  local snap = snapshot(buf)
+  if not snap or lnum == snap.filter_line then
+    return nil
+  end
+  local node = lnum == snap.root_line and snap.explorer or snap.by_line[lnum]
+  local ok, api = pcall(require, 'nvim-tree.api')
+  if not ok or not node then
+    return nil
+  end
+  local okk, keymap = pcall(api.map.keymap.current)
+  return require('nvim-tree-ui.menu').items(node, lnum == snap.root_line, {
+    api = api,
+    explorer = snap.explorer,
+    keymap = okk and keymap or {},
+    mac = vim.fn.has 'mac' == 1,
+  })
 end
 
 function M.attach(buf)
@@ -210,8 +260,11 @@ function M.attach(buf)
       return ok and item or nil
     end,
     on_click = function(lnum, clicks)
-      on_click(buf, lnum, clicks)
+      M.on_click(buf, lnum, clicks)
     end,
+    on_context_menu = M.config.context_menu ~= false and function(lnum)
+      return M.context_menu(buf, lnum)
+    end or nil,
   }
   if not view then
     attached[buf] = nil
